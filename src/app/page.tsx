@@ -29,10 +29,12 @@ export default async function Home({
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <header className="text-center mb-10">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-2">
-            Sobreviventes 3A
-          </h1>
-          <p className="text-[var(--text-muted)] text-sm uppercase tracking-widest">
+          <img
+            src="/logo-sobreviventes.png"
+            alt="Sobreviventes 3A"
+            className="mx-auto mb-5 h-52 sm:h-64 w-auto"
+          />
+          <p className="text-[var(--text-muted)] text-base sm:text-lg uppercase tracking-widest">
             Ranking de frequência
           </p>
         </header>

@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Sobreviventes 3A",
   description: "Ranking de frequência do grupo Sobreviventes 3A",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
