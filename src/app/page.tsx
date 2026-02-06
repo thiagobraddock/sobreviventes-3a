@@ -1,28 +1,85 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { getRanking, getPastMeetings, getMeetingAttendees } from "@/lib/queries";
 import { RankingList } from "@/components/ranking-list";
 import { MeetingSelector } from "@/components/meeting-selector";
+import type { MemberWithRank, Meeting, Member } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
+export default function Home() {
+  const [ranking, setRanking] = useState<MemberWithRank[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [attendeesCache, setAttendeesCache] = useState<Record<string, Member[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ meeting?: string }>;
-}) {
-  const params = await searchParams;
-  const [ranking, meetings] = await Promise.all([
-    getRanking(),
-    getPastMeetings(),
-  ]);
+  // Load ranking + meetings once on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [rankingData, meetingsData] = await Promise.all([
+          getRanking(),
+          getPastMeetings(),
+        ]);
+        setRanking(rankingData);
+        setMeetings(meetingsData);
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
-  const selectedMeetingId = params.meeting;
-  const selectedMeetingAttendees = selectedMeetingId
-    ? await getMeetingAttendees(selectedMeetingId)
-    : null;
+  // Handle meeting selection — instant UI switch + fetch attendees if needed
+  const handleSelectMeeting = async (meetingId: string | null) => {
+    setSelectedMeetingId(meetingId);
+
+    if (!meetingId || attendeesCache[meetingId]) return;
+
+    setLoadingAttendees(true);
+    try {
+      const attendees = await getMeetingAttendees(meetingId);
+      setAttendeesCache((prev) => ({ ...prev, [meetingId]: attendees }));
+    } catch (error) {
+      console.error("Failed to load attendees:", error);
+    } finally {
+      setLoadingAttendees(false);
+    }
+  };
 
   const selectedMeeting = selectedMeetingId
-    ? meetings.find((m) => m.id === selectedMeetingId)
+    ? meetings.find((m) => m.id === selectedMeetingId) ?? null
     : null;
+
+  const selectedMeetingAttendees = selectedMeetingId
+    ? attendeesCache[selectedMeetingId] ?? null
+    : null;
+
+  if (loading) {
+    return (
+      <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto">
+          <header className="text-center mb-10">
+            <div className="mx-auto mb-5 h-52 sm:h-64 w-52 sm:w-64 rounded-full bg-[var(--slate)] animate-pulse" />
+            <div className="h-5 w-48 mx-auto bg-[var(--slate)] rounded animate-pulse" />
+          </header>
+          <div className="flex flex-wrap gap-2 justify-center mb-8">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-10 w-20 bg-[var(--slate)] rounded-lg animate-pulse" />
+            ))}
+          </div>
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-16 bg-[var(--slate)] rounded-xl animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
@@ -43,10 +100,11 @@ export default async function Home({
         <MeetingSelector
           meetings={meetings}
           selectedMeetingId={selectedMeetingId}
+          onSelect={handleSelectMeeting}
         />
 
         {/* Content */}
-        {selectedMeeting && selectedMeetingAttendees ? (
+        {selectedMeeting ? (
           <div className="mb-8">
             {/* Photo */}
             {selectedMeeting.photo_url && (
@@ -70,7 +128,17 @@ export default async function Home({
                 }
               )}
             </h2>
-            {selectedMeetingAttendees.length > 0 ? (
+
+            {loadingAttendees || !selectedMeetingAttendees ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 bg-[var(--slate)] rounded-lg border border-[var(--ash)]">
+                    <div className="w-8 h-8 rounded-full bg-[var(--ash)] animate-pulse" />
+                    <div className="h-4 w-32 bg-[var(--ash)] rounded animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : selectedMeetingAttendees.length > 0 ? (
               <ul className="space-y-2">
                 {selectedMeetingAttendees.map((member) => (
                   <li
