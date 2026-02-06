@@ -118,27 +118,3 @@ export async function getAttendanceForMeeting(
   return data?.map((a) => a.member_id) || [];
 }
 
-export async function saveAttendance(
-  meetingId: string,
-  memberIds: string[]
-): Promise<void> {
-  // Delete existing attendance for this meeting
-  const { error: deleteError } = await supabase
-    .from("attendance")
-    .delete()
-    .eq("meeting_id", meetingId);
-
-  if (deleteError) throw deleteError;
-
-  // Insert new attendance
-  if (memberIds.length > 0) {
-    const { error: insertError } = await supabase.from("attendance").insert(
-      memberIds.map((member_id) => ({
-        meeting_id: meetingId,
-        member_id,
-      }))
-    );
-
-    if (insertError) throw insertError;
-  }
-}

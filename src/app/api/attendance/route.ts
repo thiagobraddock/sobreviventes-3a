@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getAttendanceForMeeting, saveAttendance } from "@/lib/queries";
+import { getAttendanceForMeeting } from "@/lib/queries";
+import { supabaseAdmin } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -45,7 +46,24 @@ export async function POST(request: Request) {
       );
     }
 
-    await saveAttendance(meetingId, memberIds || []);
+    const ids: string[] = memberIds || [];
+
+    // Delete existing attendance for this meeting
+    const { error: deleteError } = await supabaseAdmin
+      .from("attendance")
+      .delete()
+      .eq("meeting_id", meetingId);
+
+    if (deleteError) throw deleteError;
+
+    // Insert new attendance
+    if (ids.length > 0) {
+      const { error: insertError } = await supabaseAdmin
+        .from("attendance")
+        .insert(ids.map((member_id: string) => ({ meeting_id: meetingId, member_id })));
+
+      if (insertError) throw insertError;
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to save attendance:", error);

@@ -1,11 +1,11 @@
 "use client";
 
 import type { Meeting } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 
 type Props = {
   meetings: Meeting[];
-  selectedMeetingId?: string;
+  selectedMeetingId?: string | null;
+  onSelect: (meetingId: string | null) => void;
 };
 
 function formatDate(dateStr: string): string {
@@ -16,23 +16,13 @@ function formatDate(dateStr: string): string {
   });
 }
 
-export function MeetingSelector({ meetings, selectedMeetingId }: Props) {
-  const router = useRouter();
-
-  const handleSelect = (meetingId: string | null) => {
-    if (meetingId) {
-      router.push(`/?meeting=${meetingId}`);
-    } else {
-      router.push("/");
-    }
-  };
-
+export function MeetingSelector({ meetings, selectedMeetingId, onSelect }: Props) {
   return (
     <div className="mb-8">
       <div className="flex flex-wrap gap-2 justify-center">
         {/* All/Ranking button */}
         <button
-          onClick={() => handleSelect(null)}
+          onClick={() => onSelect(null)}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
             !selectedMeetingId
               ? "bg-[var(--electric)] text-white shadow-lg shadow-[var(--electric)]/25"
@@ -46,7 +36,7 @@ export function MeetingSelector({ meetings, selectedMeetingId }: Props) {
         {meetings.map((meeting) => (
           <button
             key={meeting.id}
-            onClick={() => handleSelect(meeting.id)}
+            onClick={() => onSelect(meeting.id)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
               selectedMeetingId === meeting.id
                 ? "bg-[var(--electric)] text-white shadow-lg shadow-[var(--electric)]/25"
