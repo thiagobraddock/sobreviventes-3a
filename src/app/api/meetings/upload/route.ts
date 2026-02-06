@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { getSupabaseAdmin } from "@/lib/supabase-server";
 import sharp from "sharp";
 
 const BUCKET_NAME = "photos";
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the current meeting to check if there's an existing photo
-    const { data: meeting } = await supabaseAdmin
+    const { data: meeting } = await getSupabaseAdmin()
       .from("meetings")
       .select("photo_url")
       .eq("id", meetingId)
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     if (meeting?.photo_url) {
       const oldFileName = meeting.photo_url.split("/").pop();
       if (oldFileName) {
-        await supabaseAdmin.storage.from(BUCKET_NAME).remove([oldFileName]);
+        await getSupabaseAdmin().storage.from(BUCKET_NAME).remove([oldFileName]);
       }
     }
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     const fileName = `${meetingId}-${Date.now()}.webp`;
 
     // Upload to Supabase Storage
-    const { error: uploadError } = await supabaseAdmin.storage
+    const { error: uploadError } = await getSupabaseAdmin().storage
       .from(BUCKET_NAME)
       .upload(fileName, processedImage, {
         contentType: "image/webp",
@@ -104,14 +104,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
+    const { data: urlData } = getSupabaseAdmin().storage
       .from(BUCKET_NAME)
       .getPublicUrl(fileName);
 
     const photoUrl = urlData.publicUrl;
 
     // Update meeting with photo URL
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await getSupabaseAdmin()
       .from("meetings")
       .update({ photo_url: photoUrl })
       .eq("id", meetingId);

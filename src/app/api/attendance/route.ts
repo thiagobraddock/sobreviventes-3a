@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getAttendanceForMeeting } from "@/lib/queries";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { getSupabaseAdmin } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const ids: string[] = memberIds || [];
 
     // Delete existing attendance for this meeting
-    const { error: deleteError } = await supabaseAdmin
+    const { error: deleteError } = await getSupabaseAdmin()
       .from("attendance")
       .delete()
       .eq("meeting_id", meetingId);
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     // Insert new attendance
     if (ids.length > 0) {
-      const { error: insertError } = await supabaseAdmin
+      const { error: insertError } = await getSupabaseAdmin()
         .from("attendance")
         .insert(ids.map((member_id: string) => ({ meeting_id: meetingId, member_id })));
 
