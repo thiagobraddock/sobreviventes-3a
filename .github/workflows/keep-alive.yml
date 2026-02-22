@@ -1,0 +1,14 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    - cron: '0 10 */5 * *' # every 5 days at 10am UTC
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping keep-alive function
+        run: |
+          curl -sf https://lojelumdiwwsiixstigi.supabase.co/functions/v1/keep-alive

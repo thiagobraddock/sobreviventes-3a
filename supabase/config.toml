@@ -1,0 +1,4 @@
+project_id = "lojelumdiwwsiixstigi"
+
+[functions.keep-alive]
+verify_jwt = false
