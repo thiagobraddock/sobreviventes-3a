@@ -49,3 +49,6 @@ next-env.d.ts
 
 # claude
 .claude/
+
+# codex local metadata
+.agents/
