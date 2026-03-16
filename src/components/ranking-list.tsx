@@ -1,6 +1,6 @@
 "use client";
 
-import type { MemberWithRank } from "@/lib/supabase";
+import type { MemberWithRank } from "@/lib/types";
 
 type Props = {
   ranking: MemberWithRank[];

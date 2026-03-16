@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Meeting, Member } from "@/lib/supabase";
+import type { Meeting, Member } from "@/lib/types";
 
 export function AttendanceForm() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);

@@ -1,10 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getRanking, getPastMeetings, getMeetingAttendees } from "@/lib/queries";
 import { RankingList } from "@/components/ranking-list";
 import { MeetingSelector } from "@/components/meeting-selector";
-import type { MemberWithRank, Meeting, Member } from "@/lib/supabase";
+import type { MemberWithRank, Meeting, Member } from "@/lib/types";
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Falha ao carregar ${url}`);
+  }
+
+  return response.json();
+}
 
 export default function Home() {
   const [ranking, setRanking] = useState<MemberWithRank[]>([]);
@@ -19,11 +28,15 @@ export default function Home() {
     const loadData = async () => {
       try {
         const [rankingData, meetingsData] = await Promise.all([
-          getRanking(),
-          getPastMeetings(),
+          fetchJson<MemberWithRank[]>("/api/ranking"),
+          fetchJson<Meeting[]>("/api/meetings"),
         ]);
+
+        const today = new Date().toISOString().split("T")[0];
         setRanking(rankingData);
-        setMeetings(meetingsData);
+        setMeetings(
+          meetingsData.filter((meeting) => meeting.meeting_date <= today)
+        );
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -41,7 +54,9 @@ export default function Home() {
 
     setLoadingAttendees(true);
     try {
-      const attendees = await getMeetingAttendees(meetingId);
+      const attendees = await fetchJson<Member[]>(
+        `/api/meetings/${encodeURIComponent(meetingId)}/attendees`
+      );
       setAttendeesCache((prev) => ({ ...prev, [meetingId]: attendees }));
     } catch (error) {
       console.error("Failed to load attendees:", error);

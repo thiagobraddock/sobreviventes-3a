@@ -1,120 +1,164 @@
-import { supabase, type Member, type Meeting, type MemberWithRank } from "./supabase";
+import { withTransaction, query } from "./db";
+import type { Member, Meeting, MemberWithRank } from "./types";
 
-export async function getRanking(): Promise<MemberWithRank[]> {
-  // Get all members
-  const { data: members, error: membersError } = await supabase
-    .from("members")
-    .select("*")
-    .order("name");
-
-  if (membersError) throw membersError;
-
-  // Get past meetings count
-  const { count: totalMeetings, error: meetingsError } = await supabase
-    .from("meetings")
-    .select("*", { count: "exact", head: true })
-    .lte("meeting_date", new Date().toISOString().split("T")[0]);
-
-  if (meetingsError) throw meetingsError;
-
-  // Get attendance counts per member
-  const { data: attendanceCounts, error: attendanceError } = await supabase
-    .from("attendance")
-    .select(`
-      member_id,
-      meetings!inner(meeting_date)
-    `)
-    .lte("meetings.meeting_date", new Date().toISOString().split("T")[0]);
-
-  if (attendanceError) throw attendanceError;
-
-  // Count attendance per member
-  const countMap = new Map<string, number>();
-  attendanceCounts?.forEach((a) => {
-    const current = countMap.get(a.member_id) || 0;
-    countMap.set(a.member_id, current + 1);
-  });
-
-  // Build ranking
-  const membersWithCount = members!.map((member) => ({
-    ...member,
-    attendance_count: countMap.get(member.id) || 0,
-    percentage: totalMeetings
-      ? Math.round(((countMap.get(member.id) || 0) / totalMeetings) * 100)
-      : 0,
-  }));
-
-  // Sort by attendance count desc, then name asc
-  membersWithCount.sort((a, b) => {
-    if (b.attendance_count !== a.attendance_count) {
-      return b.attendance_count - a.attendance_count;
-    }
-    return a.name.localeCompare(b.name);
-  });
-
-  // Calculate ranks with tie handling
-  let currentRank = 1;
-  let previousCount: number | null = null;
-
-  return membersWithCount.map((member, index) => {
-    if (member.attendance_count !== previousCount) {
-      currentRank = index + 1;
-    }
-    previousCount = member.attendance_count;
-    return { ...member, rank: currentRank };
-  });
+function getToday() {
+  return new Date().toISOString().split("T")[0];
 }
 
-export async function getPastMeetings(): Promise<Meeting[]> {
-  const { data, error } = await supabase
-    .from("meetings")
-    .select("*")
-    .lte("meeting_date", new Date().toISOString().split("T")[0])
-    .order("meeting_date", { ascending: false });
+export async function getRanking(): Promise<MemberWithRank[]> {
+  const { rows } = await query<MemberWithRank>(
+    `
+      WITH total_meetings AS (
+        SELECT COUNT(*)::int AS total
+        FROM meetings
+        WHERE meeting_date <= $1
+      ),
+      member_stats AS (
+        SELECT
+          members.id,
+          members.name,
+          members.created_at::text AS created_at,
+          COUNT(meetings.id)::int AS attendance_count
+        FROM members
+        LEFT JOIN attendance
+          ON attendance.member_id = members.id
+        LEFT JOIN meetings
+          ON meetings.id = attendance.meeting_id
+          AND meetings.meeting_date <= $1
+        GROUP BY members.id, members.name, members.created_at
+      )
+      SELECT
+        member_stats.id,
+        member_stats.name,
+        member_stats.created_at,
+        member_stats.attendance_count,
+        CASE
+          WHEN total_meetings.total > 0
+            THEN ROUND(
+              (member_stats.attendance_count::numeric / total_meetings.total) * 100
+            )::int
+          ELSE 0
+        END AS percentage,
+        DENSE_RANK() OVER (ORDER BY member_stats.attendance_count DESC)::int AS rank
+      FROM member_stats
+      CROSS JOIN total_meetings
+      ORDER BY member_stats.attendance_count DESC, member_stats.name ASC
+    `,
+    [getToday()]
+  );
 
-  if (error) throw error;
-  return data || [];
+  return rows;
 }
 
 export async function getAllMeetings(): Promise<Meeting[]> {
-  const { data, error } = await supabase
-    .from("meetings")
-    .select("*")
-    .order("meeting_date", { ascending: false });
+  const { rows } = await query<Meeting>(`
+    SELECT
+      id,
+      meeting_date::text AS meeting_date,
+      photo_url,
+      created_at::text AS created_at
+    FROM meetings
+    ORDER BY meeting_date DESC
+  `);
 
-  if (error) throw error;
-  return data || [];
+  return rows;
+}
+
+export async function getMeetingById(meetingId: string): Promise<Meeting | null> {
+  const { rows } = await query<Meeting>(
+    `
+      SELECT
+        id,
+        meeting_date::text AS meeting_date,
+        photo_url,
+        created_at::text AS created_at
+      FROM meetings
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [meetingId]
+  );
+
+  return rows[0] ?? null;
 }
 
 export async function getMeetingAttendees(meetingId: string): Promise<Member[]> {
-  const { data, error } = await supabase
-    .from("attendance")
-    .select("members(*)")
-    .eq("meeting_id", meetingId);
+  const { rows } = await query<Member>(
+    `
+      SELECT
+        members.id,
+        members.name,
+        members.created_at::text AS created_at
+      FROM attendance
+      INNER JOIN members
+        ON members.id = attendance.member_id
+      WHERE attendance.meeting_id = $1
+      ORDER BY members.name ASC
+    `,
+    [meetingId]
+  );
 
-  if (error) throw error;
-  return data?.map((a) => a.members as unknown as Member) || [];
+  return rows;
 }
 
 export async function getAllMembers(): Promise<Member[]> {
-  const { data, error } = await supabase
-    .from("members")
-    .select("*")
-    .order("name");
+  const { rows } = await query<Member>(`
+    SELECT
+      id,
+      name,
+      created_at::text AS created_at
+    FROM members
+    ORDER BY name ASC
+  `);
 
-  if (error) throw error;
-  return data || [];
+  return rows;
 }
 
 export async function getAttendanceForMeeting(
   meetingId: string
 ): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("attendance")
-    .select("member_id")
-    .eq("meeting_id", meetingId);
+  const { rows } = await query<{ member_id: string }>(
+    `
+      SELECT member_id
+      FROM attendance
+      WHERE meeting_id = $1
+      ORDER BY member_id ASC
+    `,
+    [meetingId]
+  );
 
-  if (error) throw error;
-  return data?.map((a) => a.member_id) || [];
+  return rows.map((row) => row.member_id);
 }
 
+export async function replaceAttendanceForMeeting(
+  meetingId: string,
+  memberIds: string[]
+) {
+  await withTransaction(async (client) => {
+    await client.query("DELETE FROM attendance WHERE meeting_id = $1", [
+      meetingId,
+    ]);
+
+    if (memberIds.length === 0) {
+      return;
+    }
+
+    await client.query(
+      `
+        INSERT INTO attendance (meeting_id, member_id)
+        SELECT $1::uuid, UNNEST($2::uuid[])
+      `,
+      [meetingId, memberIds]
+    );
+  });
+}
+
+export async function updateMeetingPhotoUrl(
+  meetingId: string,
+  photoUrl: string | null
+) {
+  await query("UPDATE meetings SET photo_url = $1 WHERE id = $2", [
+    photoUrl,
+    meetingId,
+  ]);
+}

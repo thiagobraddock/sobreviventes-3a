@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/lib/supabase-server";
 import sharp from "sharp";
+import { getMeetingById, updateMeetingPhotoUrl } from "@/lib/queries";
+import {
+  deleteUploadByPublicPath,
+  writeUploadFile,
+} from "@/lib/storage";
 
-const BUCKET_NAME = "photos";
 const MAX_WIDTH = 1920;
 const MAX_HEIGHT = 1080;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
   // Check authentication
@@ -30,8 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Valida formato UUID do meetingId
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(meetingId)) {
+    if (!UUID_REGEX.test(meetingId)) {
       return NextResponse.json(
         { error: "meetingId inválido" },
         { status: 400 }
@@ -46,19 +50,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the current meeting to check if there's an existing photo
-    const { data: meeting } = await supabaseAdmin
-      .from("meetings")
-      .select("photo_url")
-      .eq("id", meetingId)
-      .single();
+    const meeting = await getMeetingById(meetingId);
 
-    // If there's an existing photo, delete it from storage
-    if (meeting?.photo_url) {
-      const oldFileName = meeting.photo_url.split("/").pop();
-      if (oldFileName) {
-        await supabaseAdmin.storage.from(BUCKET_NAME).remove([oldFileName]);
-      }
+    if (!meeting) {
+      return NextResponse.json(
+        { error: "Encontro não encontrado" },
+        { status: 404 }
+      );
     }
 
     // Convert file to buffer
@@ -77,54 +75,28 @@ export async function POST(request: NextRequest) {
 
     // Generate unique filename
     const fileName = `${meetingId}-${Date.now()}.webp`;
+    const upload = await writeUploadFile(["meetings", fileName], processedImage);
 
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .upload(fileName, processedImage, {
-        contentType: "image/webp",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error("Upload error:", uploadError);
-      
-      // Check if bucket doesn't exist
-      if (uploadError.message?.includes("Bucket not found")) {
-        return NextResponse.json(
-          { error: "Bucket de fotos não configurado. Crie o bucket 'meeting-photos' no Supabase." },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: "Erro ao fazer upload da imagem" },
-        { status: 500 }
-      );
-    }
-
-    // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(fileName);
-
-    const photoUrl = urlData.publicUrl;
-
-    // Update meeting with photo URL
-    const { error: updateError } = await supabaseAdmin
-      .from("meetings")
-      .update({ photo_url: photoUrl })
-      .eq("id", meetingId);
-
-    if (updateError) {
-      console.error("Update error:", updateError);
+    try {
+      await updateMeetingPhotoUrl(meetingId, upload.publicPath);
+    } catch (error) {
+      await deleteUploadByPublicPath(upload.publicPath);
+      console.error("Update error:", error);
       return NextResponse.json(
         { error: "Erro ao atualizar o encontro" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true, photoUrl });
+    if (meeting.photo_url && meeting.photo_url !== upload.publicPath) {
+      try {
+        await deleteUploadByPublicPath(meeting.photo_url);
+      } catch (error) {
+        console.warn("Failed to delete previous local photo:", error);
+      }
+    }
+
+    return NextResponse.json({ success: true, photoUrl: upload.publicPath });
   } catch (error) {
     console.error("Error processing upload:", error);
     return NextResponse.json(

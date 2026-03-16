@@ -1,139 +1,106 @@
-# Sobreviventes 3A ☕
+# Sobreviventes 3A
 
-Sistema de controle de presença para encontros mensais do grupo Sobreviventes 3A. Acompanhe quem participou de cada encontro e veja o ranking de frequência.
+Sistema de controle de presença para encontros mensais do grupo Sobreviventes 3A. A aplicação agora roda sem Supabase: usa PostgreSQL direto e salva as fotos em disco, ideal para deploy completo no Railway.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
-![Supabase](https://img.shields.io/badge/Supabase-Database-green?logo=supabase)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?logo=postgresql)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css)
 
-## ✨ Funcionalidades
+## Funcionalidades
 
-- 📊 **Ranking de frequência** - Visualize quem mais participou dos encontros
-- 📅 **Histórico de presenças** - Clique em uma data para ver quem estava presente
-- 📸 **Fotos dos encontros** - Upload de fotos convertidas automaticamente para WebP
-- 🔐 **Painel admin** - Área protegida para registrar presenças e enviar fotos
-- 📱 **Responsivo** - Funciona bem em dispositivos móveis
+- Ranking de frequência
+- Histórico de presenças por encontro
+- Upload de fotos com conversão automática para WebP
+- Painel admin protegido por senha
+- Layout responsivo
 
-## 🛠️ Tecnologias
+## Stack
 
-- **Frontend:** Next.js 16 (App Router), React 19, TypeScript
-- **Estilização:** Tailwind CSS
-- **Backend:** Next.js API Routes
-- **Banco de dados:** Supabase (PostgreSQL)
-- **Storage:** Supabase Storage
-- **Processamento de imagens:** Sharp
+- Frontend: Next.js 16, React 19, TypeScript
+- Backend: Route Handlers do Next.js
+- Banco: PostgreSQL via `pg`
+- Arquivos: volume local persistente
+- Processamento de imagem: Sharp
 
-## 🚀 Setup Local
+## Variáveis de ambiente
 
-### Pré-requisitos
+Copie `.env.example` para `.env.local`:
 
-- Node.js 18+
-- Conta no [Supabase](https://supabase.com)
-
-### Instalação
-
-1. Clone o repositório:
-```bash
-git clone https://github.com/seu-usuario/sobreviventes.git
-cd sobreviventes
-```
-
-2. Instale as dependências:
-```bash
-npm install
-```
-
-3. Configure as variáveis de ambiente:
 ```bash
 cp .env.example .env.local
 ```
 
-4. Preencha o `.env.local` com suas credenciais do Supabase:
+Preencha com:
+
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
+DATABASE_URL=postgresql://...
+DATABASE_SSL=false
+UPLOAD_DIR=.data/uploads
 ADMIN_PASSWORD=sua-senha-admin
 ```
 
-5. Configure o banco de dados no Supabase:
+Notas:
 
-```sql
--- Tabela de membros
-CREATE TABLE members (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+- `DATABASE_SSL=false` funciona bem usando a connection string interna do Railway.
+- Se você usar uma URL pública/externa que exija SSL, troque para `DATABASE_SSL=true`.
+- Em produção no Railway, prefira um volume montado, por exemplo `UPLOAD_DIR=/data/uploads`.
 
--- Tabela de encontros
-CREATE TABLE meetings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  meeting_date DATE NOT NULL UNIQUE,
-  photo_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+## Banco de dados
 
--- Tabela de presenças
-CREATE TABLE attendance (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  member_id UUID REFERENCES members(id) ON DELETE CASCADE,
-  meeting_id UUID REFERENCES meetings(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(member_id, meeting_id)
-);
+O schema inicial está em `database/railway-init.sql`.
 
--- RLS Policies
-ALTER TABLE members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+Para criar a estrutura:
 
-CREATE POLICY "Public read members" ON members FOR SELECT USING (true);
-CREATE POLICY "Public read meetings" ON meetings FOR SELECT USING (true);
-CREATE POLICY "Public read attendance" ON attendance FOR SELECT USING (true);
-CREATE POLICY "Backend update meetings" ON meetings FOR UPDATE USING (true);
-CREATE POLICY "Backend insert attendance" ON attendance FOR INSERT WITH CHECK (true);
-CREATE POLICY "Backend delete attendance" ON attendance FOR DELETE USING (true);
+```bash
+psql "$DATABASE_URL" -f database/railway-init.sql
 ```
 
-6. Crie um bucket no Supabase Storage chamado `photos` com acesso público.
+As tabelas continuam simples:
 
-7. Execute o projeto:
+- `members`
+- `meetings`
+- `attendance`
+
+Não existe mais dependência de RLS nem de recursos específicos do Supabase.
+
+## Fotos
+
+As novas fotos são gravadas no diretório definido em `UPLOAD_DIR` e servidas pela própria aplicação em URLs como `/uploads/meetings/...`.
+
+Se já existirem URLs antigas do Supabase na coluna `meetings.photo_url`, elas continuam abrindo enquanto o arquivo remoto existir. Para remover a dependência antiga de vez, reenvie a foto do encontro ou migre esses arquivos para o volume novo.
+
+## Deploy no Railway
+
+1. Crie um serviço PostgreSQL no Railway.
+2. Configure `DATABASE_URL`, `DATABASE_SSL` e `ADMIN_PASSWORD` no serviço da aplicação.
+3. Adicione um volume persistente e monte no caminho usado por `UPLOAD_DIR`, por exemplo `/data/uploads`.
+4. Rode o SQL de `database/railway-init.sql`.
+5. Faça o deploy da aplicação.
+
+## Setup local
+
 ```bash
+npm install
 npm run dev
 ```
 
-8. Acesse [http://localhost:3000](http://localhost:3000)
+Acesse [http://localhost:3000](http://localhost:3000).
 
-## 📁 Estrutura do Projeto
+## Estrutura
 
-```
+```text
 src/
-├── app/
-│   ├── admin/          # Painel administrativo
-│   ├── api/            # API Routes
-│   │   ├── attendance/ # Gerenciar presenças
-│   │   ├── auth/       # Autenticação
-│   │   ├── meetings/   # Encontros e upload de fotos
-│   │   └── members/    # Membros
-│   ├── layout.tsx      # Layout principal
-│   └── page.tsx        # Página inicial (ranking)
-├── components/         # Componentes React
-└── lib/               # Utilitários e queries
+  app/
+  components/
+  lib/
+database/
+  railway-init.sql
 ```
 
-## 🔒 Segurança
+## Segurança
 
-- Autenticação via cookie HttpOnly com token SHA256 único
-- Validação de sessão em todas as rotas protegidas
-- Validação de UUID nos parâmetros
-- RLS (Row Level Security) habilitado no Supabase
-- Variáveis sensíveis em `.env.local` (não commitadas)
-
-## 📝 Licença
-
-MIT
-
----
-
-Feito com 💜 por [Thiago Oliveira](https://github.com/thiagooliveira)
+- Autenticação admin por cookie HttpOnly
+- Validação de UUID nas rotas de escrita
+- Variáveis sensíveis fora do repositório
+- Upload salvo apenas em pasta controlada pela aplicação

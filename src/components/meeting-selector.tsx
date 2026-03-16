@@ -1,6 +1,6 @@
 "use client";
 
-import type { Meeting } from "@/lib/supabase";
+import type { Meeting } from "@/lib/types";
 
 type Props = {
   meetings: Meeting[];

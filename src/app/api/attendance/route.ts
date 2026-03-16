@@ -1,15 +1,20 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getAttendanceForMeeting } from "@/lib/queries";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import {
+  getAttendanceForMeeting,
+  replaceAttendanceForMeeting,
+} from "@/lib/queries";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const meetingId = searchParams.get("meetingId");
 
-  if (!meetingId) {
+  if (!meetingId || !UUID_REGEX.test(meetingId)) {
     return NextResponse.json(
-      { error: "Missing meetingId" },
+      { error: "meetingId invalido" },
       { status: 400 }
     );
   }
@@ -39,31 +44,24 @@ export async function POST(request: Request) {
   try {
     const { meetingId, memberIds } = await request.json();
 
-    if (!meetingId) {
+    if (!meetingId || !UUID_REGEX.test(meetingId)) {
       return NextResponse.json(
-        { error: "Missing meetingId" },
+        { error: "meetingId invalido" },
         { status: 400 }
       );
     }
 
-    const ids: string[] = memberIds || [];
+    const ids = Array.isArray(memberIds) ? memberIds : [];
 
-    // Delete existing attendance for this meeting
-    const { error: deleteError } = await supabaseAdmin
-      .from("attendance")
-      .delete()
-      .eq("meeting_id", meetingId);
-
-    if (deleteError) throw deleteError;
-
-    // Insert new attendance
-    if (ids.length > 0) {
-      const { error: insertError } = await supabaseAdmin
-        .from("attendance")
-        .insert(ids.map((member_id: string) => ({ meeting_id: meetingId, member_id })));
-
-      if (insertError) throw insertError;
+    if (!ids.every((memberId) => typeof memberId === "string" && UUID_REGEX.test(memberId))) {
+      return NextResponse.json(
+        { error: "Lista de membros invalida" },
+        { status: 400 }
+      );
     }
+
+    await replaceAttendanceForMeeting(meetingId, ids);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to save attendance:", error);
